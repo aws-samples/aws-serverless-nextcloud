@@ -1,0 +1,836 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  Amazon ECS Service for Nextcloud with Serverless RDS, EFS & S3
+Parameters:
+  DeploymentName:
+    Description: Deployment Name ( Unique client name, unsuffixed domain name or similar, no punctuation)
+    Type: String
+    Default: nc4
+  Route53Zone:
+    Type: String
+    Default: ""
+  Domain:
+    Type: String
+    Default: ""
+  DbUserName:
+    Type: String
+    Default: nextcloud
+  DbPassword:
+    Type: String
+    NoEcho: True
+    Default: nextcloud123$$$
+  NextCloudAdminUser:
+    Type: String
+    Default: fzouhar
+  NextCloudAdminPassword:
+    Type: String
+    NoEcho: True
+    Default: nextcloud123$$$
+  NextCloudVersion:
+    Type: String
+    Default: 21.0.1
+  S3SecretRotationSerial:
+    Type: Number
+    Default: 1
+  IsolationLevel:
+    Type: String
+    Default: Public
+    AllowedValues:
+    - PrivateHA
+    - Private
+    - Public
+  SuspendAutoScaling:
+    Type: String
+    Default: false
+  EcsCapacityProvider:
+    Type: String
+    Default: FARGATE_SPOT
+    AllowedValues:
+    - FARGATE_SPOT
+    - FARGATE
+
+Mappings:
+  Config:
+    Container:
+      Uid: 33
+      Gid: 0
+      Permission: "0777"
+
+Conditions:
+  CustomDomain: !Not [!And [!Equals [!Ref Domain, ""], !Equals [!Ref Route53Zone, ""]]]
+  PrivateSubnets: !Not [!Equals [!Ref IsolationLevel, Public]]
+
+Resources:
+  VpcStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./simplevpc.yaml
+      TimeoutInMinutes: 60
+      Parameters:
+        EnvironmentName: !Ref DeploymentName
+        IsolationLevel: !Ref IsolationLevel
+  RdsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./db-cluster.yaml
+      TimeoutInMinutes: 60
+      Parameters:
+        DbUserName: !Ref DbUserName
+        DbPassword: !Ref DbPassword
+        DbName: nextcloud
+        PrivateSubnets: !GetAtt VpcStack.Outputs.PrivateSubnets
+        VpcId: !GetAtt VpcStack.Outputs.VPC
+        FargateSecGroupId: !Ref EcsSecurityGroup
+
+  EcsCluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties:
+      CapacityProviders:
+      - FARGATE
+      - FARGATE_SPOT
+      DefaultCapacityProviderStrategy:
+      - CapacityProvider: FARGATE
+        Weight: 0
+      - CapacityProvider: FARGATE_SPOT
+        Weight: 1
+      Configuration:
+        ExecuteCommandConfiguration:
+          Logging: DEFAULT
+
+  EcsSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: ECS Security Group
+      VpcId: !GetAtt VpcStack.Outputs.VPC
+
+  EcsSecurityGroupHTTPinbound:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref EcsSecurityGroup
+      IpProtocol: tcp
+      FromPort: '80'
+      ToPort: '80'
+      SourceSecurityGroupId: !Ref ElbSecurityGroup
+
+  CloudwatchLogsGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Join
+      - '-'
+      - - !Sub ${DeploymentName}
+        - !Ref 'AWS::StackName'
+      RetentionInDays: 14
+  DataBucket:
+    DeletionPolicy: Retain
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - BucketKeyEnabled: true
+          ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+  BucketUser:
+    Type: AWS::IAM::User
+    Properties:
+      Policies:
+      - PolicyName: s3-access
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - s3:*
+            Resource: !Sub arn:aws:s3:::${DataBucket}
+          - Effect: Allow
+            Action:
+            - s3:*
+            Resource: !Sub arn:aws:s3:::${DataBucket}/*
+          - Effect: Allow
+            Action:
+            - s3:GetBucketLocation
+            Resource: arn:aws:s3:::*
+  BucketUserCredentials:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      Serial: !Ref S3SecretRotationSerial
+      Status: Active
+      UserName: !Ref BucketUser
+
+  Efs:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      Encrypted: true
+  EfsMountTarget1:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId:
+        Ref: Efs
+      SubnetId: !Select [0, !Split [ ',', !GetAtt VpcStack.Outputs.PrivateSubnets ]]
+      SecurityGroups:
+      - Ref: "EfsSecurityGroup"
+  EfsMountTarget2:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId:
+        Ref: Efs
+      SubnetId: !Select [ 1, !Split [ ',', !GetAtt VpcStack.Outputs.PrivateSubnets ] ]
+      SecurityGroups:
+      - Ref: "EfsSecurityGroup"
+  EfsAPNextcloud:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref Efs
+      RootDirectory:
+        Path: !Sub /${DeploymentName}/nextcloud
+        CreationInfo:
+          OwnerUid: !FindInMap [Config, Container, Uid]
+          OwnerGid: !FindInMap [Config, Container, Gid]
+          Permissions: !FindInMap [Config, Container, Permission]
+  EfsAPConfig:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref Efs
+      RootDirectory:
+        Path: !Sub /${DeploymentName}/config
+        CreationInfo:
+          OwnerUid: !FindInMap [Config, Container, Uid]
+          OwnerGid: !FindInMap [Config, Container, Gid]
+          Permissions: !FindInMap [Config, Container, Permission]
+  EfsAPApps:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref Efs
+      RootDirectory:
+        Path: !Sub /${DeploymentName}/apps
+        CreationInfo:
+          OwnerUid: !FindInMap [Config, Container, Uid]
+          OwnerGid: !FindInMap [Config, Container, Gid]
+          Permissions: !FindInMap [Config, Container, Permission]
+  EfsAPData:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref Efs
+      RootDirectory:
+        Path: !Sub /${DeploymentName}/data
+        CreationInfo:
+          OwnerUid: !FindInMap [Config, Container, Uid]
+          OwnerGid: !FindInMap [Config, Container, Gid]
+          Permissions: !FindInMap [Config, Container, Permission]
+  EfsSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: ECS Security Group
+      VpcId: !GetAtt VpcStack.Outputs.VPC
+
+  EfsSecurityGroupNFSinbound:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref EfsSecurityGroup
+      IpProtocol: tcp
+      FromPort: '2049'
+      ToPort: '2049'
+      SourceSecurityGroupId: !Ref EcsSecurityGroup
+  # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/bind-mounts.html
+  EcsTaskDefinition:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties:
+      Family: !Join
+      - ''
+      - - !Ref 'AWS::StackName'
+        - '-ecs-nextcloud'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+      - "FARGATE"
+      ExecutionRoleArn: !GetAtt ECSTaskExecRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      Cpu: 512
+      Memory: 1024
+      ContainerDefinitions:
+      - Name: nextcloud
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group: !Ref CloudwatchLogsGroup
+            awslogs-region: !Ref AWS::Region
+            awslogs-stream-prefix: nextcloud
+        Environment:
+        - Name: POSTGRES_DB
+          Value: nextcloud
+        - Name: POSTGRES_USER
+          Value: !Ref DbUserName
+        - Name: POSTGRES_PASSWORD
+          Value: !Ref DbPassword
+        - Name: POSTGRES_HOST
+          Value: !GetAtt RdsStack.Outputs.EndpointUrl
+        - Name: NEXTCLOUD_TRUSTED_DOMAINS
+          Value:
+            Fn::Sub:
+            - ${Domain} ${ElbDomain}
+            - ElbDomain: !GetAtt ElasticLoadBalancer.DNSName
+        - Name: NEXTCLOUD_ADMIN_USER
+          Value: !Ref NextCloudAdminUser
+        - Name: NEXTCLOUD_ADMIN_PASSWORD
+          Value: !Ref NextCloudAdminPassword
+        - Name: OBJECTSTORE_S3_BUCKET
+          Value: !Ref DataBucket
+        - Name: OBJECTSTORE_S3_REGION
+          Value: !Ref AWS::Region
+        - Name: OBJECTSTORE_S3_KEY
+          Value: !Ref BucketUserCredentials
+        - Name: OBJECTSTORE_S3_SECRET
+          Value: !GetAtt BucketUserCredentials.SecretAccessKey
+        - Name: OVERWRITEPROTOCOL
+          Value: !If [CustomDomain, https, http]
+        - Name: REDIS_HOST
+          Value: !GetAtt RedisReplicationGroup.PrimaryEndPoint.Address
+        - Name: REDIS_PORT
+          Value: !GetAtt RedisReplicationGroup.PrimaryEndPoint.Port
+        PortMappings:
+        - HostPort: 80
+          Protocol: tcp
+          ContainerPort: 80
+        MountPoints:
+        - ContainerPath: "/var/www/html"
+          SourceVolume: nextcloud
+        - ContainerPath: "/var/www/html/custom_apps"
+          SourceVolume: apps
+        - ContainerPath: "/var/www/html/config"
+          SourceVolume: config
+        - ContainerPath: "/var/www/html/data"
+          SourceVolume: data
+        Image: !Sub nextcloud:${NextCloudVersion}-apache
+        Essential: true
+      Volumes:
+      - Name: nextcloud
+        EFSVolumeConfiguration:
+          FilesystemId: !Ref Efs
+          AuthorizationConfig:
+            AccessPointId: !Ref EfsAPNextcloud
+            IAM: ENABLED
+          TransitEncryption: ENABLED
+      - Name: apps
+        EFSVolumeConfiguration:
+          FilesystemId: !Ref Efs
+          AuthorizationConfig:
+            AccessPointId: !Ref EfsAPApps
+            IAM: ENABLED
+          TransitEncryption: ENABLED
+      - Name: config
+        EFSVolumeConfiguration:
+          FilesystemId: !Ref Efs
+          AuthorizationConfig:
+            AccessPointId: !Ref EfsAPConfig
+            IAM: ENABLED
+          TransitEncryption: ENABLED
+      - Name: data
+        EFSVolumeConfiguration:
+          FilesystemId: !Ref Efs
+          AuthorizationConfig:
+            AccessPointId: !Ref EfsAPData
+            IAM: ENABLED
+          TransitEncryption: ENABLED
+  AlbCertificate:
+    Condition: CustomDomain
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref Domain
+      ValidationMethod: DNS
+      DomainValidationOptions:
+      - DomainName: !Ref Domain
+        HostedZoneId: !Ref Route53Zone
+  ElbSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: ELB Security Group
+      VpcId: !GetAtt VpcStack.Outputs.VPC
+
+  ElbSecurityGroupHTTPSinbound:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref ElbSecurityGroup
+      IpProtocol: tcp
+      FromPort: '443'
+      ToPort: '443'
+      CidrIp: 0.0.0.0/0
+  ElbSecurityGroupHTTPinbound:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref ElbSecurityGroup
+      IpProtocol: tcp
+      FromPort: '80'
+      ToPort: '80'
+      CidrIp: 0.0.0.0/0
+  ElasticLoadBalancer:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+      - Key: idle_timeout.timeout_seconds
+        Value: '30'
+      Subnets: !Split [ ',', !GetAtt VpcStack.Outputs.PublicSubnets ]
+      SecurityGroups:
+      - !Ref ElbSecurityGroup
+  Route53AliasRecord:
+    Condition: CustomDomain
+    Type: AWS::Route53::RecordSet
+    Properties:
+      AliasTarget:
+        DNSName: !GetAtt ElasticLoadBalancer.DNSName
+        EvaluateTargetHealth: true
+        HostedZoneId: !GetAtt ElasticLoadBalancer.CanonicalHostedZoneID
+      Comment: Sso Api Gateway
+      HostedZoneId: !Ref Route53Zone
+      Name: !Ref Domain
+      Type: A
+
+  LoadBalancerListener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+        Fn::If:
+          - CustomDomain
+          - - Type: "redirect"
+              RedirectConfig:
+                Protocol: "HTTPS"
+                Port: 443
+                Host: "#{host}"
+                Path: "/#{path}"
+                Query: "#{query}"
+                StatusCode: "HTTP_301"
+          - - Type: forward
+              TargetGroupArn: !Ref LoadBalancerTargetGroup
+      LoadBalancerArn: !Ref ElasticLoadBalancer
+      Port: '80'
+      Protocol: HTTP
+
+  HttpsLoadBalancerListener:
+    Condition: CustomDomain
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      Certificates:
+      - CertificateArn: !Ref AlbCertificate
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref LoadBalancerTargetGroup
+      LoadBalancerArn: !Ref ElasticLoadBalancer
+      Port: '443'
+      Protocol: HTTPS
+
+  LoadBalancerListenerRule:
+    Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'
+    DependsOn: LoadBalancerListener
+    Properties:
+      Actions:
+      - Type: forward
+        TargetGroupArn: !Ref LoadBalancerTargetGroup
+      Conditions:
+      - Field: "path-pattern"
+        Values:
+        - "/"
+      ListenerArn: !Ref LoadBalancerListener
+      Priority: 1
+
+  LoadBalancerTargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    DependsOn: ElasticLoadBalancer
+    Properties:
+      HealthCheckIntervalSeconds: 10 # This might be keeping the Serverless RDS awake
+      HealthCheckPath: /status.php
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP
+      Matcher:
+        HttpCode: 200,400
+      UnhealthyThresholdCount: 2
+      VpcId: !GetAtt VpcStack.Outputs.VPC
+      TargetType: ip
+      TargetGroupAttributes:
+      - Key: deregistration_delay.timeout_seconds
+        Value: 60
+      - Key: stickiness.enabled
+        Value: true
+      - Key: stickiness.type
+        Value: app_cookie
+      - Key: stickiness.app_cookie.cookie_name
+        Value: nc_session_id
+
+  EcsService:
+    DependsOn:
+    - LoadBalancerListener
+    - EfsMountTarget1
+    - EfsMountTarget2
+    Type: 'AWS::ECS::Service'
+    Properties:
+      Cluster: !Ref EcsCluster
+      DesiredCount: 1
+      CapacityProviderStrategy:
+      - Base: 1
+        CapacityProvider: FARGATE_SPOT
+        Weight: 1
+      DeploymentConfiguration:
+        MaximumPercent: 100
+        MinimumHealthyPercent: 0 # Allows service interruption rather than scaling up
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: !If [PrivateSubnets, DISABLED, ENABLED]
+          SecurityGroups:
+          - !Ref EcsSecurityGroup
+          Subnets: !Split [ ',', !If [PrivateSubnets, !GetAtt VpcStack.Outputs.PrivateSubnets, !GetAtt VpcStack.Outputs.PublicSubnets] ]
+      HealthCheckGracePeriodSeconds: 1200
+      LoadBalancers:
+      - ContainerName: 'nextcloud'
+        ContainerPort: '80'
+        TargetGroupArn: !Ref LoadBalancerTargetGroup
+      SchedulingStrategy: REPLICA
+      TaskDefinition: !Ref EcsTaskDefinition
+
+  ECSTaskRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ecs-tasks.amazonaws.com
+          Action:
+          - 'sts:AssumeRole'
+      Path: /
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - 'elasticloadbalancing:DeregisterInstancesFromLoadBalancer'
+            - 'elasticloadbalancing:DeregisterTargets'
+            - 'elasticloadbalancing:Describe*'
+            - 'elasticloadbalancing:RegisterInstancesWithLoadBalancer'
+            - 'elasticloadbalancing:RegisterTargets'
+            - 'ec2:Describe*'
+            - 'ec2:AuthorizeSecurityGroupIngress'
+            - 'elasticfilesystem:*'
+            - 'logs:*'
+            # TODO: understand permissions needed
+            - "*"
+            Resource: '*'
+
+  ECSTaskExecRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ecs-tasks.amazonaws.com
+          Action:
+          - 'sts:AssumeRole'
+      Path: /
+#      ManagedPolicyArns:
+#      - 'arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole'
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:*
+            - s3:*
+            - elasticfilesystem:*
+            # TODO: understand permissions needed
+            - "*"
+            Resource: '*'
+
+  Ec2NcRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:*
+            - elasticfilesystem:*
+            Resource: '*'
+  InstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Path: "/"
+      Roles:
+      - Ref: Ec2NcRole
+  RedisSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Elasticache Security Group
+      VpcId: !GetAtt VpcStack.Outputs.VPC
+  RedisSecurityGroupinbound:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref RedisSecurityGroup
+      IpProtocol: tcp
+      FromPort: '6379'
+      ToPort: '6379'
+      SourceSecurityGroupId: !Ref EcsSecurityGroup
+  RedisSubnetGroup:
+    Type: 'AWS::ElastiCache::SubnetGroup'
+    Properties:
+      Description: Redis Subnet Group
+      SubnetIds: !Split [ ',', !GetAtt VpcStack.Outputs.PrivateSubnets]
+  RedisParameterGroup:
+    Type: AWS::ElastiCache::ParameterGroup
+    Properties:
+      Description: nextcloud param group
+      CacheParameterGroupFamily: redis6.x
+      Properties:
+        cluster-enabled: 'no'
+  RedisReplicationGroup:
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties:
+      ReplicationGroupDescription: 'redis cache for nextcloud'
+      AutomaticFailoverEnabled: false
+      NumCacheClusters: 1
+      AtRestEncryptionEnabled: true
+      MultiAZEnabled: false
+      CacheNodeType: cache.t3.micro
+      CacheParameterGroupName: !Ref RedisParameterGroup
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      Engine: redis
+      EngineVersion: 6.x
+#      NumNodeGroups: 1
+#      ReplicasPerNodeGroup: 1
+#      NodeGroupConfiguration:
+#      - ReplicaCount: 1
+      PreferredMaintenanceWindow: 'sat:07:00-sat:08:00'
+      SecurityGroupIds:
+      - !GetAtt
+        - RedisSecurityGroup
+        - GroupId
+      SnapshotRetentionLimit: 35
+      SnapshotWindow: '00:00-03:00'
+      AtRestEncryptionEnabled: true
+    UpdatePolicy:
+      UseOnlineResharding: true
+  NextcloudAutoScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: ecs-tasks.amazonaws.com
+          Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+      - 'arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole'
+  NextcloudAutoScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MinCapacity: 1
+      MaxCapacity: 25
+      ResourceId: !Join [ '/', [ service, !Ref EcsCluster, !GetAtt EcsService.Name ] ]
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+      # "The Amazon Resource Name (ARN) of an AWS Identity and Access Management (IAM) role that allows Application Auto Scaling to modify your scalable target."
+      RoleARN: !GetAtt NextcloudAutoScalingRole.Arn
+      SuspendedState:
+        DynamicScalingInSuspended: !Ref SuspendAutoScaling
+        DynamicScalingOutSuspended: !Ref SuspendAutoScaling
+        ScheduledScalingSuspended: !Ref SuspendAutoScaling
+  NextcloudAutoScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !GetAtt EcsService.Name
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref NextcloudAutoScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleInCooldown: 10
+        ScaleOutCooldown: 10
+        # Keep things at or lower than 50% CPU utilization, for example
+        TargetValue: 50
+  NextcloudCWDashvoad:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub ${DeploymentName}-nextcloud
+      DashboardBody: !Sub |
+        {
+            "widgets": [
+                {
+                    "height": 6,
+                    "width": 12,
+                    "y": 0,
+                    "x": 0,
+                    "type": "metric",
+                    "properties": {
+                        "view": "timeSeries",
+                        "stacked": false,
+                        "metrics": [
+                            [ "AWS/ECS", "CPUUtilization", "ServiceName", "${EcsService.Name}", "ClusterName", "${EcsCluster}" ]
+                        ],
+                        "region": "${AWS::Region}",
+                        "title": "ECS-CPUUtilization"
+                    }
+                },
+                {
+                    "height": 6,
+                    "width": 12,
+                    "y": 0,
+                    "x": 12,
+                    "type": "metric",
+                    "properties": {
+                        "view": "timeSeries",
+                        "stacked": false,
+                        "region": "${AWS::Region}",
+                        "stat": "Average",
+                        "period": 300,
+                        "metrics": [
+                            [ "AWS/ECS", "MemoryUtilization", "ServiceName", "${EcsService.Name}", "ClusterName", "${EcsCluster}" ]
+                        ],
+                        "title": "ECS-MemoryUtilization"
+                    }
+                },
+                {
+                    "height": 6,
+                    "width": 12,
+                    "y": 6,
+                    "x": 0,
+                    "type": "metric",
+                    "properties": {
+                        "view": "timeSeries",
+                        "stacked": false,
+                        "region": "${AWS::Region}",
+                        "stat": "Average",
+                        "period": 300,
+                        "metrics": [
+                            [ "AWS/RDS", "CPUUtilization", "DBClusterIdentifier", "${RdsStack.Outputs.DBIdentifier}" ]
+                        ],
+                        "title": "RDS-CPUUtilization"
+                    }
+                },
+                {
+                    "height": 6,
+                    "width": 12,
+                    "y": 6,
+                    "x": 12,
+                    "type": "metric",
+                    "properties": {
+                        "view": "timeSeries",
+                        "stacked": false,
+                        "region": "${AWS::Region}",
+                        "stat": "Average",
+                        "period": 300,
+                        "metrics": [
+                            [ "AWS/RDS", "DatabaseConnections", "DBClusterIdentifier", "${RdsStack.Outputs.DBIdentifier}" ]
+                        ],
+                        "title": "DatabaseConnections"
+                    }
+                },
+                {
+                    "height": 6,
+                    "width": 12,
+                    "y": 12,
+                    "x": 0,
+                    "type": "metric",
+                    "properties": {
+                        "metrics": [
+                            [ "AWS/EFS", "StorageBytes", "StorageClass", "Standard", "FileSystemId", "${Efs}" ],
+                            [ "...", "IA", ".", "." ],
+                            [ "...", "Total", ".", "." ]
+                        ],
+                        "view": "timeSeries",
+                        "stacked": false,
+                        "region": "${AWS::Region}",
+                        "stat": "Average",
+                        "period": 300,
+                        "title": "EFS-StorageBytes"
+                    }
+                },
+                {
+                    "height": 6,
+                    "width": 12,
+                    "y": 12,
+                    "x": 12,
+                    "type": "metric",
+                    "properties": {
+                        "metrics": [
+                            [ { "expression": "(m2*100)/m1", "label": "Data write", "id": "e2", "region": "${AWS::Region}" } ],
+                            [ { "expression": "(m3*100)/m1", "label": "Data read", "id": "e3", "region": "${AWS::Region}" } ],
+                            [ { "expression": "(m4*100)/m1", "label": "Metadata", "id": "e4", "region": "${AWS::Region}" } ],
+                            [ "AWS/EFS", "TotalIOBytes", "FileSystemId", "${Efs}", { "id": "m1", "visible": false, "region": "${AWS::Region}" } ],
+                            [ "AWS/EFS", "DataWriteIOBytes", "FileSystemId", "${Efs}", { "id": "m2", "visible": false, "region": "${AWS::Region}" } ],
+                            [ "AWS/EFS", "DataReadIOBytes", "FileSystemId", "${Efs}", { "id": "m3", "visible": false, "region": "${AWS::Region}" } ],
+                            [ "AWS/EFS", "MetadataIOBytes", "FileSystemId", "${Efs}", { "id": "m4", "visible": false, "region": "${AWS::Region}" } ]
+                        ],
+                        "view": "timeSeries",
+                        "stacked": false,
+                        "region": "${AWS::Region}",
+                        "stat": "Sum",
+                        "period": 60,
+                        "title": "EFS - Throughput by type"
+                    }
+                },
+                {
+                    "height": 6,
+                    "width": 12,
+                    "y": 18,
+                    "x": 0,
+                    "type": "metric",
+                    "properties": {
+                        "view": "timeSeries",
+                        "stacked": false,
+                        "start": "-P14D",
+                        "end": "P0D",
+                        "region": "${AWS::Region}",
+                        "metrics": [
+                            [ "AWS/S3", "BucketSizeBytes", "StorageType", "StandardStorage", "BucketName", "${DataBucket}" ]
+                        ],
+                        "period": 86400,
+                        "stat": "Average",
+                        "title": "Data-BucketSizeBytes"
+                    }
+                },
+                {
+                    "height": 6,
+                    "width": 12,
+                    "y": 18,
+                    "x": 12,
+                    "type": "metric",
+                    "properties": {
+                        "view": "timeSeries",
+                        "stacked": false,
+                        "start": "-P14D",
+                        "end": "P0D",
+                        "region": "${AWS::Region}",
+                        "metrics": [
+                            [ "AWS/S3", "NumberOfObjects", "StorageType", "AllStorageTypes", "BucketName", "${DataBucket}", { "period": 86400 } ]
+                        ],
+                        "period": 86400,
+                        "stat": "Average",
+                        "title": "DataBucket-NumberOfObjects"
+                    }
+                }
+            ]
+        }
+
+
+Outputs:
+  CloudWatchDashboardUrl:
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${DeploymentName}-nextcloud

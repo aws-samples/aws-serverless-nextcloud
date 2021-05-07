@@ -1,0 +1,76 @@
+Description: Aurora DB
+
+Parameters:
+  DbUserName:
+    Type: String
+  DbPassword:
+    Type: String
+  DbName:
+    Type: String
+  PrivateSubnets:
+    Type: String
+  VpcId:
+    Type: String
+  FargateSecGroupId:
+    Type: String
+
+Resources:
+  RdsSubnetGroup:
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties:
+      DBSubnetGroupDescription: description
+      SubnetIds: !Split [',', !Ref PrivateSubnets]
+  PostgresRdsSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: ECS Security Group
+      VpcId: !Ref VpcId
+  PostgresRdsSecurityGroupPostgresInboundFargate:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref PostgresRdsSecurityGroup
+      IpProtocol: tcp
+      FromPort: '5432'
+      ToPort: '5432'
+      SourceSecurityGroupId: !Ref FargateSecGroupId
+  PostgresRdsCluster:
+    Type: "AWS::RDS::DBCluster"
+    Properties:
+      DBClusterParameterGroupName:
+        Ref: PostgresRdsClusterParameterGroup
+      DBSubnetGroupName:
+        Ref: RdsSubnetGroup
+      DatabaseName: !Ref DbName
+      Engine: aurora-postgresql
+      EngineMode: serverless
+      EngineVersion: 10.2
+      Port: 5432
+      StorageEncrypted: true
+      #      EnableHttpEndpoint: true
+      ScalingConfiguration:
+        AutoPause: true
+        MinCapacity: 2
+        MaxCapacity: 8
+        SecondsUntilAutoPause: 3600
+      VpcSecurityGroupIds:
+      - !Ref PostgresRdsSecurityGroup
+      MasterUserPassword:
+        Ref: DbPassword
+      MasterUsername:
+        Ref: DbUserName
+  PostgresRdsClusterParameterGroup:
+    Type: "AWS::RDS::DBClusterParameterGroup"
+    Properties:
+      Description: "CloudFormation Aurora Cluster Parameter Group"
+      Family: aurora-postgresql10
+      Parameters:
+        timezone: UTC
+
+Outputs:
+  DBIdentifier:
+    Value: !Ref PostgresRdsCluster
+  EndpointUrl:
+    Value: !GetAtt PostgresRdsCluster.Endpoint.Address
+  EndpointPort:
+    Value: !GetAtt PostgresRdsCluster.Endpoint.Port
+
