@@ -5,7 +5,7 @@ Parameters:
   DeploymentName:
     Description: Deployment Name ( Unique client name, unsuffixed domain name or similar, no punctuation)
     Type: String
-    Default: nc4
+    Default: nc-serverless
   Route53Zone:
     Type: String
     Default: ""
@@ -18,14 +18,12 @@ Parameters:
   DbPassword:
     Type: String
     NoEcho: True
-    Default: nextcloud123$$$
   NextCloudAdminUser:
     Type: String
-    Default: fzouhar
+    Default: nc-admin
   NextCloudAdminPassword:
     Type: String
     NoEcho: True
-    Default: nextcloud123$$$
   NextCloudVersion:
     Type: String
     Default: 21.0.1
@@ -48,6 +46,46 @@ Parameters:
     AllowedValues:
     - FARGATE_SPOT
     - FARGATE
+  EcsTaskCpu:
+    Type: String
+    Default: 512
+    AllowedValues:
+    - 256
+    - 512
+    - 1024
+    - 2048
+    - 4096
+  EcsTaskMem:
+    Type: String
+    Default: 1024
+  RedisTshirtSize:
+    Type: String
+    Default: cache.t3.micro
+    AllowedValues:
+    - cache.t3.micro
+    - cache.t3.small
+    - cache.t3.medium
+    - cache.m5.large
+    - cache.m5.xlarge
+    - cache.m5.2xlarge
+    - cache.m5.4xlarge
+    - cache.m5.12xlarge
+    - cache.m5.24xlarge
+    - cache.r5.large
+    - cache.r5.xlarge
+    - cache.r5.2xlarge
+    - cache.r5.4xlarge
+    - cache.r5.12xlarge
+    - cache.r5.24xlarge
+  EcsMinCapacity:
+    Type: Number
+    Default: 1
+  EcsMaxCapacity:
+    Type: Number
+    Default: 25
+  EcsTargetCpuUtilization:
+    Type: Number
+    Default: 50
 
 Mappings:
   Config:
@@ -86,12 +124,9 @@ Resources:
     Type: 'AWS::ECS::Cluster'
     Properties:
       CapacityProviders:
-      - FARGATE
-      - FARGATE_SPOT
+      - !Ref EcsCapacityProvider
       DefaultCapacityProviderStrategy:
-      - CapacityProvider: FARGATE
-        Weight: 0
-      - CapacityProvider: FARGATE_SPOT
+      - CapacityProvider: !Ref EcsCapacityProvider
         Weight: 1
       Configuration:
         ExecuteCommandConfiguration:
@@ -244,8 +279,8 @@ Resources:
       - "FARGATE"
       ExecutionRoleArn: !GetAtt ECSTaskExecRole.Arn
       TaskRoleArn: !GetAtt ECSTaskRole.Arn
-      Cpu: 512
-      Memory: 1024
+      Cpu: !Ref EcsTaskCpu
+      Memory: !Ref EcsTaskMem
       ContainerDefinitions:
       - Name: nextcloud
         LogConfiguration:
@@ -468,7 +503,7 @@ Resources:
       DesiredCount: 1
       CapacityProviderStrategy:
       - Base: 1
-        CapacityProvider: FARGATE_SPOT
+        CapacityProvider: !Ref EcsCapacityProvider
         Weight: 1
       DeploymentConfiguration:
         MaximumPercent: 100
@@ -530,8 +565,6 @@ Resources:
           Action:
           - 'sts:AssumeRole'
       Path: /
-#      ManagedPolicyArns:
-#      - 'arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole'
       Policies:
       - PolicyName: ecs-service
         PolicyDocument:
@@ -609,7 +642,7 @@ Resources:
       NumCacheClusters: 1
       AtRestEncryptionEnabled: true
       MultiAZEnabled: false
-      CacheNodeType: cache.t3.micro
+      CacheNodeType: !Ref RedisTshirtSize
       CacheParameterGroupName: !Ref RedisParameterGroup
       CacheSubnetGroupName: !Ref RedisSubnetGroup
       Engine: redis
@@ -642,12 +675,11 @@ Resources:
   NextcloudAutoScalingTarget:
     Type: AWS::ApplicationAutoScaling::ScalableTarget
     Properties:
-      MinCapacity: 1
-      MaxCapacity: 25
+      MinCapacity: !Ref EcsMinCapacity
+      MaxCapacity: !Ref EcsMaxCapacity
       ResourceId: !Join [ '/', [ service, !Ref EcsCluster, !GetAtt EcsService.Name ] ]
       ScalableDimension: ecs:service:DesiredCount
       ServiceNamespace: ecs
-      # "The Amazon Resource Name (ARN) of an AWS Identity and Access Management (IAM) role that allows Application Auto Scaling to modify your scalable target."
       RoleARN: !GetAtt NextcloudAutoScalingRole.Arn
       SuspendedState:
         DynamicScalingInSuspended: !Ref SuspendAutoScaling
@@ -664,8 +696,8 @@ Resources:
           PredefinedMetricType: ECSServiceAverageCPUUtilization
         ScaleInCooldown: 10
         ScaleOutCooldown: 10
-        # Keep things at or lower than 50% CPU utilization, for example
-        TargetValue: 50
+        # Keep things at or lower than a target CPU utilization, for example
+        TargetValue: !Ref EcsTargetCpuUtilization
   NextcloudCWDashvoad:
     Type: AWS::CloudWatch::Dashboard
     Properties:

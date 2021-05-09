@@ -42,6 +42,8 @@ With the right services and tools there is no need to manage servers or manually
 
 * Audit IAM roles for least privileged permissions
 * Enhanced monitoring for fine granular auto-scaling (RDS and ECS)
+* Redis Cluster Support
+* Use short-term credentials instead of IAM User for S3 access
 
 ## Datapoints
 
