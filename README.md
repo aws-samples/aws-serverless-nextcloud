@@ -34,6 +34,8 @@ With the right services and tools there is no need to manage servers or manually
 
 ![Architecture Diagram](docs/aws-nextcloud.png)
 
+## Sizing
+
 ## How to upgrade Nextcloud to newer version
 
 1. Create backups of RDS and EFS
@@ -58,6 +60,7 @@ With the right services and tools there is no need to manage servers or manually
 ### Note:
 
 * **While code samples in this repository has been tested and believe it works well, as always, be sure to test it in your environment before using it in production!**
+* It is highly recommended to change the administrator password after initial deployment
 
 ## Security
 

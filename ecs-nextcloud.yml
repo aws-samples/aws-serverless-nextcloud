@@ -38,7 +38,7 @@ Parameters:
     Default: 1
   IsolationLevel:
     Type: String
-    Default: Public
+    Default: Private
     AllowedValues:
     - PrivateHA
     - Private
@@ -48,13 +48,13 @@ Parameters:
     Default: false
   EcsCapacityProvider:
     Type: String
-    Default: FARGATE_SPOT
+    Default: FARGATE
     AllowedValues:
     - FARGATE_SPOT
     - FARGATE
   EcsTaskCpu:
-    Type: String
-    Default: 512
+    Type: Number
+    Default: 1024
     AllowedValues:
     - 256
     - 512
@@ -62,11 +62,11 @@ Parameters:
     - 2048
     - 4096
   EcsTaskMem:
-    Type: String
-    Default: 1024
+    Type: Number
+    Default: 2048
   RedisTshirtSize:
     Type: String
-    Default: cache.t3.micro
+    Default: cache.t3.small
     AllowedValues:
     - cache.t3.micro
     - cache.t3.small
@@ -86,6 +86,9 @@ Parameters:
   EcsMinCapacity:
     Type: Number
     Default: 1
+  EcsInitialDesiredCapacity:
+    Type: Number
+    Default: 2
   EcsMaxCapacity:
     Type: Number
     Default: 25
@@ -130,10 +133,8 @@ Resources:
     Type: 'AWS::ECS::Cluster'
     Properties:
       CapacityProviders:
-      - !Ref EcsCapacityProvider
-      DefaultCapacityProviderStrategy:
-      - CapacityProvider: !Ref EcsCapacityProvider
-        Weight: 1
+      - FARGATE
+      - FARGATE_SPOT
       Configuration:
         ExecuteCommandConfiguration:
           Logging: DEFAULT
@@ -187,13 +188,13 @@ Resources:
             Action:
             - s3:*
             Resource: !Sub arn:aws:s3:::${DataBucket}/*
-          - Effect: Deny
-            Action:
-            - s3:DeleteBucket*
-            - s3:PutBucket*
-            - s3:PutEncryptionConfiguration
-            - s3:CreateBucket
-            Resource: "*"
+#          - Effect: Deny
+#            Action:
+#            - s3:DeleteBucket*
+#            - s3:PutBucket*
+#            - s3:PutEncryptionConfiguration
+#            - s3:CreateBucket
+#            Resource: "*"
           - Effect: Allow
             Action:
             - s3:GetBucketLocation
@@ -509,7 +510,7 @@ Resources:
     Type: 'AWS::ECS::Service'
     Properties:
       Cluster: !Ref EcsCluster
-      DesiredCount: 1
+      DesiredCount: !Ref EcsInitialDesiredCapacity
       CapacityProviderStrategy:
       - Base: 1
         CapacityProvider: !Ref EcsCapacityProvider
@@ -756,10 +757,10 @@ Resources:
         ScaleOutCooldown: 10
         # Keep things at or lower than a target CPU utilization, for example
         TargetValue: !Ref EcsTargetCpuUtilization
-  NextcloudCWDashvoad:
+  NextcloudCWDashbard:
     Type: AWS::CloudWatch::Dashboard
     Properties:
-      DashboardName: !Sub ${DeploymentName}-nextcloud
+      DashboardName: !Sub ${DeploymentName}-next-cloud
       DashboardBody: !Sub |
         {
             "widgets": [
@@ -916,7 +917,39 @@ Resources:
                         "stat": "Average",
                         "title": "DataBucket-NumberOfObjects"
                     }
-                }
+                },
+                 {
+                     "type": "metric",
+                     "x": 0,
+                     "y": 24,
+                     "width": 12,
+                     "height": 6,
+                     "properties": {
+                         "view": "timeSeries",
+                         "stacked": false,
+                         "metrics": [
+                             [ "AWS/ElastiCache", "CPUUtilization", "CacheClusterId", "${RedisReplicationGroup}-001", "CacheNodeId", "0001" ]
+                         ],
+                         "region": "${AWS::Region}",
+                         "title": "Redis_CPUUtilization"
+                     }
+                 },
+                 {
+                     "type": "metric",
+                     "x": 12,
+                     "y": 24,
+                     "width": 12,
+                     "height": 6,
+                     "properties": {
+                         "view": "timeSeries",
+                         "stacked": false,
+                         "metrics": [
+                             [ "AWS/ElastiCache", "DatabaseMemoryUsagePercentage", "CacheClusterId", "${RedisReplicationGroup}-001", "CacheNodeId", "0001" ]
+                         ],
+                         "region": "${AWS::Region}",
+                         "title": "Redis_DatabaseMemoryUsagePercentage"
+                     }
+                 }
             ]
         }
 
