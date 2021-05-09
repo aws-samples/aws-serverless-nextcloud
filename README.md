@@ -24,6 +24,11 @@ With the right services and tools there is no need to manage servers or manually
 
 * `aws cloudformation package --template-file ecs-nextcloud.yml --s3-bucket <cfn-artifact-bucket-name> --output-file packaged.yaml `
 * Deploy packaged CloudFormation file (`packaged.yaml`) with appropriate parameters
+* The VPC setup has three levels of isolation
+  * `public` places containers within the public subnets
+  * `private` places containers into private subnets, deploys one NAT Gateway for outbound internet access
+  * `privateHA` same as privat, but deploys two NAT Gateways
+* To switch from `private` to `privateHA` and vice versa you have to switch to `public` an transitional step
 
 ## Architecture
 
@@ -40,7 +45,6 @@ With the right services and tools there is no need to manage servers or manually
 
 ## Future Work
 
-* Audit IAM roles for least privileged permissions
 * Enhanced monitoring for fine granular auto-scaling (RDS and ECS)
 * Redis Cluster Support
 * Use short-term credentials instead of IAM User for S3 access
@@ -60,3 +64,5 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 ## License
 
 This library is licensed under the MIT-0 License. See the [LICENSE](LICENSE) file.
+
+This deployment references the official [Nextcloud Docker image](https://github.com/nextcloud/docker) which is published under [AGPL-3.0 License](https://github.com/nextcloud/docker/blob/master/LICENSE.md).

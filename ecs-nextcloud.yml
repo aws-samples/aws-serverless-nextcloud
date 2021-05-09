@@ -14,13 +14,19 @@ Parameters:
     Default: ""
   DbUserName:
     Type: String
+    AllowedPattern: ^[a-zA-Z0-9]{6,32}
     Default: nextcloud
   DbPassword:
     Type: String
     NoEcho: True
   NextCloudAdminUser:
     Type: String
-    Default: nc-admin
+    AllowedPattern: ^[a-zA-Z0-9]{6,32}
+    Default: ncadmin
+  NextCloudDbName:
+    Type: String
+    AllowedPattern: ^[a-zA-Z0-9]{6,32}
+    Default: nextcloud
   NextCloudAdminPassword:
     Type: String
     NoEcho: True
@@ -181,6 +187,13 @@ Resources:
             Action:
             - s3:*
             Resource: !Sub arn:aws:s3:::${DataBucket}/*
+          - Effect: Deny
+            Action:
+            - s3:DeleteBucket*
+            - s3:PutBucket*
+            - s3:PutEncryptionConfiguration
+            - s3:CreateBucket
+            Resource: "*"
           - Effect: Allow
             Action:
             - s3:GetBucketLocation
@@ -291,7 +304,7 @@ Resources:
             awslogs-stream-prefix: nextcloud
         Environment:
         - Name: POSTGRES_DB
-          Value: nextcloud
+          Value: !Ref NextCloudDbName
         - Name: POSTGRES_USER
           Value: !Ref DbUserName
         - Name: POSTGRES_PASSWORD
@@ -534,6 +547,9 @@ Resources:
           Action:
           - 'sts:AssumeRole'
       Path: /
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+      - 'arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole'
       Policies:
       - PolicyName: ecs-service
         PolicyDocument:
@@ -545,13 +561,29 @@ Resources:
             - 'elasticloadbalancing:Describe*'
             - 'elasticloadbalancing:RegisterInstancesWithLoadBalancer'
             - 'elasticloadbalancing:RegisterTargets'
+            # TODO: understand permissions needed
+            Resource: '*'
+          - Effect: Allow
+            Action:
             - 'ec2:Describe*'
             - 'ec2:AuthorizeSecurityGroupIngress'
-            - 'elasticfilesystem:*'
-            - 'logs:*'
-            # TODO: understand permissions needed
-            - "*"
-            Resource: '*'
+            - "ec2:AttachNetworkInterface"
+            - "ec2:CreateNetworkInterface"
+            - "ec2:CreateNetworkInterfacePermission"
+            - "ec2:DeleteNetworkInterface"
+            - "ec2:DeleteNetworkInterfacePermission"
+            - "ec2:Describe*"
+            - "ec2:DetachNetworkInterface"
+            Resource: "*"
+          - Effect: Allow
+            Action:
+            - elasticfilesystem:*
+            Resource:
+            - !Sub arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:file-system/${Efs}
+            - !Sub arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:access-point/${EfsAPNextcloud}
+            - !Sub arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:access-point/${EfsAPConfig}
+            - !Sub arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:access-point/${EfsAPApps}
+            - !Sub arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:access-point/${EfsAPData}
 
   ECSTaskExecRole:
     Type: 'AWS::IAM::Role'
@@ -565,18 +597,48 @@ Resources:
           Action:
           - 'sts:AssumeRole'
       Path: /
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+      - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
       Policies:
       - PolicyName: ecs-service
         PolicyDocument:
           Statement:
           - Effect: Allow
             Action:
-            - logs:*
-            - s3:*
             - elasticfilesystem:*
-            # TODO: understand permissions needed
-            - "*"
-            Resource: '*'
+            Resource:
+            - !Sub arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:file-system/${Efs}
+            - !Sub arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:access-point/${EfsAPNextcloud}
+            - !Sub arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:access-point/${EfsAPConfig}
+            - !Sub arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:access-point/${EfsAPApps}
+            - !Sub arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:access-point/${EfsAPData}
+          - Effect: Allow
+            Action:
+            - "ecr:GetAuthorizationToken"
+            - "ecr:BatchCheckLayerAvailability"
+            - "ecr:GetDownloadUrlForLayer"
+            - "ecr:BatchGetImage"
+            Resource: "*"
+          - Effect: Allow
+            Action:
+            - s3:*
+            Resource: !Sub arn:aws:s3:::${DataBucket}
+          - Effect: Allow
+            Action:
+            - s3:*
+            Resource: !Sub arn:aws:s3:::${DataBucket}/*
+          - Effect: Deny
+            Action:
+            - s3:DeleteBucket*
+            - s3:PutBucket*
+            - s3:PutEncryptionConfiguration
+            - s3:CreateBucket
+            Resource: "*"
+          - Effect: Allow
+            Action:
+            - s3:GetBucketLocation
+            Resource: arn:aws:s3:::*
 
   Ec2NcRole:
     Type: 'AWS::IAM::Role'
@@ -866,3 +928,8 @@ Resources:
 Outputs:
   CloudWatchDashboardUrl:
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${DeploymentName}-nextcloud
+  LoadBalancerUrl:
+    Value: !GetAtt ElasticLoadBalancer.DNSName
+  CustomUrl:
+    Condition: CustomDomain
+    Value: !Sub https://${Domain}

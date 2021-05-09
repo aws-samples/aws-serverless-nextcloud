@@ -42,6 +42,7 @@ Parameters:
 Conditions:
   PrivateSubnets: !Not [!Equals [!Ref IsolationLevel, Public]]
   HASetup: !Equals [!Ref IsolationLevel, PrivateHA]
+  PrivateSubnetsAndNotHA: !And [Condition: PrivateSubnets, !Not [Condition: HASetup]]
 
 Resources:
   VPC:
@@ -207,7 +208,7 @@ Resources:
       NatGatewayId: !Ref NatGateway2
 
   DefaultPrivateRouteNonHA2:
-    Condition: PrivateSubnets
+    Condition: PrivateSubnetsAndNotHA
     Type: AWS::EC2::Route
     Properties:
       RouteTableId: !Ref PrivateRouteTable2
