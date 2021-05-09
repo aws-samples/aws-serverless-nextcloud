@@ -57,6 +57,12 @@ With the right services and tools there is no need to manage servers or manually
 
 * Baseline costs xyz $
 
+## Monitoring
+
+Sample CloudWatch Dashboard pre-configured with some metrics will be deployed within CloudFormation
+
+![CW-Dashboard](docs/cw-dashboard.png)
+
 ### Note:
 
 * **While code samples in this repository has been tested and believe it works well, as always, be sure to test it in your environment before using it in production!**

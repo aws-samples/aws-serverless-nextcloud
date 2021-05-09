@@ -46,7 +46,6 @@ Resources:
       EngineVersion: 10.2
       Port: 5432
       StorageEncrypted: true
-      #      EnableHttpEndpoint: true
       ScalingConfiguration:
         AutoPause: true
         MinCapacity: 2
