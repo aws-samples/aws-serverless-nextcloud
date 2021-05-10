@@ -2,10 +2,10 @@
 
 ## Welcome
 
-This repository demonstrates how an application like NextCloud can be run on AWS completely serverless.
-With the right services and tools there is no need to manage servers or manually increase capacity.
+This repository provides AWS CloudFormation templates to deploy NextCloud on AWS completely.
+No need to manage servers or manually react to monitoring events with adding capacity manually.
 
-## AWS Services & How they match the NextCloud design?
+## AWS Services & How they match the NextCloud design
 
 * Elastic Container Service - Fargate
     * Running and scaling the official nextcloud docker container (Apache, PHP)
