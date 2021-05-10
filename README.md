@@ -55,7 +55,6 @@ A desired container capacity of 2 allows scaling and re-deployment without downt
 * Use short-term credentials instead of IAM User for S3 access
 * Enable WebCron
 * Auto-Prewarming
-* CFN metadata
 
 ## Datapoints
 

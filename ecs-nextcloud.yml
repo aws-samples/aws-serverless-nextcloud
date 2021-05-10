@@ -1,68 +1,126 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: >-
   Amazon ECS Service for Nextcloud with Serverless RDS, EFS & S3
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: 'Deployment Identifiers'
+      Parameters:
+      - DeploymentName
+    - Label:
+        default: 'Nextcloud Configuration'
+      Parameters:
+      - NextCloudAdminUser
+      - NextCloudAdminPassword
+      - NextCloudVersion
+    - Label:
+        default: 'Database Configuration'
+      Parameters:
+      - DbUserName
+      - DbPassword
+      - NextCloudDbName
+      - DbMinCapacity
+      - DbMaxCapacity
+    - Label:
+        default: 'AWS ECS Configuration'
+      Parameters:
+      - EcsTaskCpu
+      - EcsTaskMem
+      - EcsCapacityProvider
+      - EcsMinCapacity
+      - EcsDesiredCapacity
+      - EcsMaxCapacity
+      - EcsTargetCpuUtilization
+      - SuspendAutoScaling
+    - Label:
+        default: 'ElastiCache Redis Configuration'
+      Parameters:
+      - RedisTshirtSize
+    - Label:
+        default: 'VPC Configuration'
+      Parameters:
+      - IsolationLevel
+    - Label:
+        default: 'Custom Domain Configuration (optional)'
+      Parameters:
+      - Domain
+      - Route53Zone
+
 Parameters:
   DeploymentName:
-    Description: Deployment Name ( Unique client name, unsuffixed domain name or similar, no punctuation)
+    Description: Deployment Name (Unique name, no punctuation)
     Type: String
     Default: nc-serverless
   Route53Zone:
+    Description: Route53 Public Hosted Zone ID to configure custom domain
     Type: String
     Default: ""
   Domain:
+    Description: Speficy a full quallified domain name to use with this Nextcloud deployment
     Type: String
     Default: ""
   DbUserName:
+    Description: Database Master Username
     Type: String
     AllowedPattern: ^[a-zA-Z0-9]{6,32}
     Default: nextcloud
   DbPassword:
+    Description: Database Master Password
     Type: String
     NoEcho: True
   DbMinCapacity:
+    Description: Minimal Aurora Capacity Units Provisioned
     Type: Number
     MinValue: 2
     MaxValue: 384
     Default: 2
   DbMaxCapacity:
+    Description: Maxmimal Aurora Capacity Units Provisioned
     Type: Number
     MinValue: 2
     MaxValue: 384
     Default: 8
   NextCloudAdminUser:
+    Description: Initial Nextcloud Admin User
     Type: String
     AllowedPattern: ^[a-zA-Z0-9]{6,32}
     Default: ncadmin
+  NextCloudAdminPassword:
+    Description: Initial Nextcloud Admin Password (change after first login)
+    Type: String
+    NoEcho: True
   NextCloudDbName:
+    Description: Nextcloud Database Name
     Type: String
     AllowedPattern: ^[a-zA-Z0-9]{6,32}
     Default: nextcloud
-  NextCloudAdminPassword:
-    Type: String
-    NoEcho: True
   NextCloudVersion:
+    Description: Nextcloud Version to be deployed (no downgrade possible)
     Type: String
     Default: 21.0.1
   S3SecretRotationSerial:
+    Description: In order to rotate long-term S3 credentials increase by 1
     Type: Number
     Default: 1
   IsolationLevel:
+    Description: VPC Isolation Level (see README.md)
     Type: String
     Default: Private
     AllowedValues:
     - PrivateHA
     - Private
     - Public
-  SuspendAutoScaling:
-    Type: String
-    Default: false
   EcsCapacityProvider:
+    Description: Optional select Spot Fargate Tasks for Development Environments
     Type: String
     Default: FARGATE
     AllowedValues:
     - FARGATE_SPOT
     - FARGATE
   EcsTaskCpu:
+    Description: CPU Units to provision per ECS Container
     Type: Number
     Default: 1024
     AllowedValues:
@@ -72,21 +130,31 @@ Parameters:
     - 2048
     - 4096
   EcsTaskMem:
+    Description: Memory to provision per ECS Container (MB)
     Type: Number
     Default: 2048
   EcsMinCapacity:
+    Description: Minimum number of ECS Containers to provision
     Type: Number
     Default: 2
   EcsInitialDesiredCapacity:
+    Description: Initial Desired number of ECS Containers to provision
     Type: Number
     Default: 2
   EcsMaxCapacity:
+    Description: Maximum number of ECS Containers to provision
     Type: Number
     Default: 25
   EcsTargetCpuUtilization:
+    Description: Threshold to be reached for scaling in/out
     Type: Number
     Default: 50
+  SuspendAutoScaling:
+    Description: Suspend Auto Scaling for Maintanence
+    Type: String
+    Default: false
   RedisTshirtSize:
+    Description: ElasticCache Redis Node Size
     Type: String
     Default: cache.t3.small
     AllowedValues:
