@@ -19,6 +19,16 @@ Parameters:
   DbPassword:
     Type: String
     NoEcho: True
+  DbMinCapacity:
+    Type: Number
+    MinValue: 2
+    MaxValue: 384
+    Default: 2
+  DbMaxCapacity:
+    Type: Number
+    MinValue: 2
+    MaxValue: 384
+    Default: 8
   NextCloudAdminUser:
     Type: String
     AllowedPattern: ^[a-zA-Z0-9]{6,32}
@@ -64,6 +74,18 @@ Parameters:
   EcsTaskMem:
     Type: Number
     Default: 2048
+  EcsMinCapacity:
+    Type: Number
+    Default: 2
+  EcsInitialDesiredCapacity:
+    Type: Number
+    Default: 2
+  EcsMaxCapacity:
+    Type: Number
+    Default: 25
+  EcsTargetCpuUtilization:
+    Type: Number
+    Default: 50
   RedisTshirtSize:
     Type: String
     Default: cache.t3.small
@@ -83,18 +105,6 @@ Parameters:
     - cache.r5.4xlarge
     - cache.r5.12xlarge
     - cache.r5.24xlarge
-  EcsMinCapacity:
-    Type: Number
-    Default: 1
-  EcsInitialDesiredCapacity:
-    Type: Number
-    Default: 2
-  EcsMaxCapacity:
-    Type: Number
-    Default: 25
-  EcsTargetCpuUtilization:
-    Type: Number
-    Default: 50
 
 Mappings:
   Config:
@@ -116,6 +126,7 @@ Resources:
       Parameters:
         EnvironmentName: !Ref DeploymentName
         IsolationLevel: !Ref IsolationLevel
+
   RdsStack:
     Type: AWS::CloudFormation::Stack
     Properties:
@@ -125,6 +136,8 @@ Resources:
         DbUserName: !Ref DbUserName
         DbPassword: !Ref DbPassword
         DbName: nextcloud
+        DbMinCapacity: !Ref DbMinCapacity
+        DbMaxCapacity: !Ref DbMaxCapacity
         PrivateSubnets: !GetAtt VpcStack.Outputs.PrivateSubnets
         VpcId: !GetAtt VpcStack.Outputs.VPC
         FargateSecGroupId: !Ref EcsSecurityGroup
@@ -188,13 +201,12 @@ Resources:
             Action:
             - s3:*
             Resource: !Sub arn:aws:s3:::${DataBucket}/*
-#          - Effect: Deny
-#            Action:
-#            - s3:DeleteBucket*
-#            - s3:PutBucket*
-#            - s3:PutEncryptionConfiguration
-#            - s3:CreateBucket
-#            Resource: "*"
+          - Effect: Deny
+            Action:
+            - s3:DeleteBucket*
+            - s3:PutBucketPolicy
+            - s3:PutEncryptionConfiguration
+            Resource: "*"
           - Effect: Allow
             Action:
             - s3:GetBucketLocation
