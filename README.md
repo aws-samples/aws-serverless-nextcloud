@@ -29,6 +29,8 @@ No need to manage servers or manually react to monitoring events with adding cap
   * `private` places containers into private subnets, deploys one NAT Gateway for outbound internet access
   * `privateHA` same as privat, but deploys two NAT Gateways
 * To switch from `private` to `privateHA` and vice versa you have to switch to `public` as transitional step
+* After the CloudFormation Stack is deployed successfully it takes up to 15min for the frontend being available initially
+* Find the Nextcloud URLs within the CloudFormation Outputs
 
 ## Architecture
 
