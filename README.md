@@ -36,6 +36,9 @@ With the right services and tools there is no need to manage servers or manually
 
 ## Sizing
 
+The recommendation is to use the at least the default values to get decent performance (`cpu: 1024, mem: 2048`).
+A desired container capacity of 2 allows scaling and re-deployment without downtime.  
+
 ## How to upgrade Nextcloud to newer version
 
 1. Create backups of RDS and EFS
@@ -52,6 +55,7 @@ With the right services and tools there is no need to manage servers or manually
 * Use short-term credentials instead of IAM User for S3 access
 * Enable WebCron
 * Auto-Prewarming
+* CFN metadata
 
 ## Datapoints
 
