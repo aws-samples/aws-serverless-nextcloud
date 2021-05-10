@@ -68,6 +68,18 @@ Resources:
       InternetGatewayId: !Ref InternetGateway
       VpcId: !Ref VPC
 
+  S3GatewayEndpoint:
+    Condition: HASetup
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcEndpointType: Gateway
+      RouteTableIds:
+      - !Ref PrivateRouteTable1
+      - !Ref PrivateRouteTable2
+      - !Ref PublicRouteTable
+
   PublicSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
