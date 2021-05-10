@@ -11,9 +11,9 @@ With the right services and tools there is no need to manage servers or manually
     * Running and scaling the official nextcloud docker container (Apache, PHP)
 * Elastic Filesystem - NFS
     * Persist basic settings and configuration, support official nextcloud upgrade mechanism
-* S3
+* Amazon S3
     * Primary data storage for cloud native data handling (archiving, tiering, versioning)
-* Aurora Serverless - RDS (Postgres)
+* RDS Aurora Serverless - RDS (Postgres)
     * Cloud native full managed auto-scaled database system backing the nextcloud installation
 * ElastiCache - Redis
     * Handles PHP Sessions to enable container cluster to scale easily without interruption for end-users
@@ -28,7 +28,7 @@ With the right services and tools there is no need to manage servers or manually
   * `public` places containers within the public subnets
   * `private` places containers into private subnets, deploys one NAT Gateway for outbound internet access
   * `privateHA` same as privat, but deploys two NAT Gateways
-* To switch from `private` to `privateHA` and vice versa you have to switch to `public` an transitional step
+* To switch from `private` to `privateHA` and vice versa you have to switch to `public` as transitional step
 
 ## Architecture
 
@@ -42,27 +42,24 @@ A desired container capacity of 2 allows scaling and re-deployment without downt
 ## How to upgrade Nextcloud to newer version
 
 1. Create backups of RDS and EFS
-2. Suspend AutoScaling   
-3. Scale in to 1 task
-4. Update CFN stack with new version
-5. Wait for Nextcloud come up
-6. Scale out service to desired size
+2. Suspend AutoScaling using the CloudFormation parameter
+3. Scale in to 1 task (set desired ECS capacity to 1)
+4. Update CFN stack with new version number
+5. Wait for Nextcloud to become available
+6. Verify the upgrade was successful
+7. Scale out service to desired size and disable AutoScaling suspension
 
 ## Future Work
 
-* Enhanced monitoring for fine granular auto-scaling (RDS and ECS)
-* Redis Cluster Support
-* Use short-term credentials instead of IAM User for S3 access
+* Enhanced monitoring for fine granular auto-scaling (ECS)
 * Enable WebCron
-* Auto-Prewarming
-
-## Datapoints
-
-* Baseline costs xyz $
+* Whenever Nextcloud supports it 
+  * Use short-term credentials instead of IAM User for S3 access
+  * Redis Cluster Support
 
 ## Monitoring
 
-Sample CloudWatch Dashboard pre-configured with some metrics will be deployed within CloudFormation
+Sample CloudWatch Dashboard pre-configured with basic metrics will be deployed within CloudFormation
 
 ![CW-Dashboard](docs/cw-dashboard.png)
 
@@ -79,4 +76,4 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 
 This library is licensed under the MIT-0 License. See the [LICENSE](LICENSE) file.
 
-This deployment references the official [Nextcloud Docker image](https://github.com/nextcloud/docker) which is published under [AGPL-3.0 License](https://github.com/nextcloud/docker/blob/master/LICENSE.md).
+**This deployment references the official [Nextcloud Docker image](https://github.com/nextcloud/docker) which is published under [AGPL-3.0 License](https://github.com/nextcloud/docker/blob/master/LICENSE.md).**
