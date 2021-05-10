@@ -7,6 +7,10 @@ Parameters:
     Type: String
   DbName:
     Type: String
+  DbMinCapacity:
+    Type: Number
+  DbMaxCapacity:
+    Type: Number
   PrivateSubnets:
     Type: String
   VpcId:
@@ -48,8 +52,8 @@ Resources:
       StorageEncrypted: true
       ScalingConfiguration:
         AutoPause: true
-        MinCapacity: 2
-        MaxCapacity: 8
+        MinCapacity: !Ref DbMinCapacity
+        MaxCapacity: !Ref DbMaxCapacity
         SecondsUntilAutoPause: 3600
       VpcSecurityGroupIds:
       - !Ref PostgresRdsSecurityGroup
