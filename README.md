@@ -41,7 +41,7 @@ No need to manage servers or manually react to monitoring events with adding cap
 ## Sizing
 
 The recommendation is to use the at least the default values to get decent performance (`cpu: 1024, mem: 2048`).
-A desired container capacity of 2 allows scaling and re-deployment without downtime.
+A desired container capacity of 2 allows scaling and re-deployment without downtime. For initialization go with a single container to avoid clashes when copying files during the setup phase.
 
 The baseline cost drivers are the AWS RDS database, ElastiCache Redis and Fargate task costs. Find the hourly charged costs for your AWS region within the AWS pricing pages:
 * Check per ACU (Auora Capacity Unit) costs https://aws.amazon.com/rds/aurora/pricing/
