@@ -22,13 +22,15 @@ No need to manage servers or manually react to monitoring events with adding cap
 
 ## Deployment
 
-* `aws cloudformation package --template-file ecs-nextcloud.yml --s3-bucket <cfn-artifact-bucket-name> --output-file packaged.yaml `
+* If you have never used AWS ECS within your AWS Account before, create the Service-Linked Role before going on. See the official [AWS Documentation](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/using-service-linked-roles.html#create-service-linked-role)
+* `aws cloudformation package --template-file ecs-nextcloud.yml --s3-bucket <cfn-artifact-bucket-name> --output-template-file packaged.yaml `
 * Deploy packaged CloudFormation file (`packaged.yaml`) with appropriate parameters
+  * For example using `aws cloudformation deploy --template-file packaged.yaml --stack-name nextcloud-test-env --parameter-overrides DbPassword=<DB-Admin-Password> NextCloudAdminPassword=<Nextcloud-Admin-Password> IsolationLevel=Public --capabilities CAPABILITY_IAM`
 * The VPC setup has three levels of isolation
-  * `public` places containers within the public subnets
-  * `private` places containers into private subnets, deploys one NAT Gateway for outbound internet access
-  * `privateHA` same as privat, but deploys two NAT Gateways
-* To switch from `private` to `privateHA` and vice versa you have to switch to `public` as transitional step
+  * `Public` places containers within the public subnets
+  * `Private` places containers into private subnets, deploys one NAT Gateway for outbound internet access
+  * `PrivateHA` same as privat, but deploys two NAT Gateways
+* To switch from `Private` to `PrivateHA` and vice versa you have to switch to `Public` as transitional step
 * After the CloudFormation Stack is deployed successfully it takes up to 15min for the frontend being available initially
 * Find the Nextcloud URLs within the CloudFormation Outputs
 
@@ -39,7 +41,12 @@ No need to manage servers or manually react to monitoring events with adding cap
 ## Sizing
 
 The recommendation is to use the at least the default values to get decent performance (`cpu: 1024, mem: 2048`).
-A desired container capacity of 2 allows scaling and re-deployment without downtime.  
+A desired container capacity of 2 allows scaling and re-deployment without downtime.
+
+The baseline cost drivers are the AWS RDS database, ElastiCache Redis and Fargate task costs. Find the hourly charged costs for your AWS region within the AWS pricing pages:
+* Check per ACU (Auora Capacity Unit) costs https://aws.amazon.com/rds/aurora/pricing/
+* Fargate Pricing https://aws.amazon.com/fargate/pricing/
+* ElastiCache Redis Pricing https://aws.amazon.com/elasticache/pricing/
 
 ## How to upgrade Nextcloud to newer version
 
@@ -69,6 +76,7 @@ Sample CloudWatch Dashboard pre-configured with basic metrics will be deployed w
 
 * **While code samples in this repository has been tested and believe it works well, as always, be sure to test it in your environment before using it in production!**
 * It is highly recommended to change the administrator password after initial deployment
+* While the `Public` VPC isolation level is the most cost efficient one, the suggestion is, for production workloads keep instances and containers in private subnets. This lowers risk, e.g. opening up ports with wrongly configured inbound port on VPC security groups.
 
 ## Security
 
