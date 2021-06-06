@@ -46,7 +46,7 @@ Metadata:
       - EcsTaskMem
       - EcsCapacityProvider
       - EcsMinCapacity
-      - EcsDesiredCapacity
+      - EcsInitialDesiredCapacity
       - EcsMaxCapacity
       - EcsTargetCpuUtilization
       - SuspendAutoScaling
@@ -152,11 +152,11 @@ Parameters:
   EcsMinCapacity:
     Description: Minimum number of ECS Containers to provision
     Type: Number
-    Default: 2
+    Default: 1
   EcsInitialDesiredCapacity:
     Description: Initial Desired number of ECS Containers to provision
     Type: Number
-    Default: 2
+    Default: 1
   EcsMaxCapacity:
     Description: Maximum number of ECS Containers to provision
     Type: Number
