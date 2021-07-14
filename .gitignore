@@ -2,3 +2,4 @@
 build/
 output/
 .DS_Store
+packaged.yaml
