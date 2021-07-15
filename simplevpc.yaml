@@ -58,7 +58,6 @@ Parameters:
 Conditions:
   PrivateSubnets: !Not [!Equals [!Ref IsolationLevel, Public]]
   HASetup: !Equals [!Ref IsolationLevel, PrivateHA]
-  PrivateSubnetsAndNotHA: !And [Condition: PrivateSubnets, !Not [Condition: HASetup]]
 
 Resources:
   VPC:
@@ -85,7 +84,7 @@ Resources:
       VpcId: !Ref VPC
 
   S3GatewayEndpoint:
-    Condition: HASetup
+    Condition: PrivateSubnets
     Type: AWS::EC2::VPCEndpoint
     Properties:
       VpcId: !Ref VPC
@@ -228,20 +227,12 @@ Resources:
         Value: !Sub ${EnvironmentName} Private Routes (AZ2)
 
   DefaultPrivateRoute2:
-    Condition: HASetup
+    Condition: PrivateSubnets
     Type: AWS::EC2::Route
     Properties:
       RouteTableId: !Ref PrivateRouteTable2
       DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGateway2
-
-  DefaultPrivateRouteNonHA2:
-    Condition: PrivateSubnetsAndNotHA
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable2
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGateway1
+      NatGatewayId: !If [HASetup, !Ref NatGateway2, !Ref NatGateway1]
 
   PrivateSubnet2RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
