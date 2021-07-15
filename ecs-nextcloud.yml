@@ -857,7 +857,7 @@ Resources:
   NextcloudCWDashbard:
     Type: AWS::CloudWatch::Dashboard
     Properties:
-      DashboardName: !Sub ${DeploymentName}-next-cloud
+      DashboardName: !Sub ${DeploymentName}-nextcloud
       DashboardBody: !Sub |
         {
             "widgets": [
@@ -1053,7 +1053,7 @@ Resources:
 
 Outputs:
   CloudWatchDashboardUrl:
-    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${DeploymentName}-nextcloud
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${NextcloudCWDashbard}
   LoadBalancerUrl:
     Value: !GetAtt ElasticLoadBalancer.DNSName
   CustomUrl:
