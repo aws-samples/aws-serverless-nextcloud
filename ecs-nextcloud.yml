@@ -627,6 +627,7 @@ Resources:
         TargetGroupArn: !Ref LoadBalancerTargetGroup
       SchedulingStrategy: REPLICA
       TaskDefinition: !Ref EcsTaskDefinition
+      PropagateTags: SERVICE
 
   ECSTaskRole:
     Type: 'AWS::IAM::Role'
