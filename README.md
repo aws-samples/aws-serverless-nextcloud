@@ -22,6 +22,8 @@ No need to manage servers or manually react to monitoring events with adding cap
 
 ## Quickstart
 
+You can use the following link to deploy this solution directly into your AWS account. Ensure you are logged into the AWS Console before following it.
+
 [Quickstart CloudFormation Link](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?templateURL=https:%2F%2Fs3.amazonaws.com%2Ff7o-quickstart%2Faws-serverless-nextcloud%2Fecs-nextcloud.yml)
 
 ## Deployment
