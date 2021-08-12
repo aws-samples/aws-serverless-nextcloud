@@ -20,6 +20,10 @@ No need to manage servers or manually react to monitoring events with adding cap
 * Application Load Balancer, Route53, Amazon Certificate Manager
     * Secures the application with HTTPS, balances load, performs health checks, auto-certificate renewal
 
+## Quickstart
+
+[Quickstart](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?templateURL=https:%2F%2Fs3.amazonaws.com%2Ff7o-quickstart%2Faws-serverless-nextcloud%2Fecs-nextcloud.yml)
+
 ## Deployment
 
 * If you have never used AWS ECS within your AWS Account before, create the Service-Linked Role before going on. See the official [AWS Documentation](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/using-service-linked-roles.html#create-service-linked-role)
