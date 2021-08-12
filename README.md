@@ -22,9 +22,13 @@ No need to manage servers or manually react to monitoring events with adding cap
 
 ## Quickstart
 
-[Quickstart](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?templateURL=https:%2F%2Fs3.amazonaws.com%2Ff7o-quickstart%2Faws-serverless-nextcloud%2Fecs-nextcloud.yml)
+[Quickstart CloudFormation Link](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?templateURL=https:%2F%2Fs3.amazonaws.com%2Ff7o-quickstart%2Faws-serverless-nextcloud%2Fecs-nextcloud.yml)
 
 ## Deployment
+
+This project assumes a familiarity with AWS CLI and AWS CloudFormation. Additional reference can be found at the following links:
+[https://aws.amazon.com/cli/](https://aws.amazon.com/cli/)
+[https://aws.amazon.com/cloudformation/](https://aws.amazon.com/cloudformation/)
 
 * If you have never used AWS ECS within your AWS Account before, create the Service-Linked Role before going on. See the official [AWS Documentation](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/using-service-linked-roles.html#create-service-linked-role)
 * `aws cloudformation package --template-file ecs-nextcloud.yml --s3-bucket <cfn-artifact-bucket-name> --output-template-file packaged.yaml `
