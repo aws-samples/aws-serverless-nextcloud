@@ -1,4 +1,4 @@
-# Nextcloud Container Deployment on AWS - 100% Serverless
+# Nextcloud Container Deployment on AWS - Serverless
 
 ## Welcome
 
