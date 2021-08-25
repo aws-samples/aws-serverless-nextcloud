@@ -796,7 +796,6 @@ Resources:
       ReplicationGroupDescription: 'redis cache for nextcloud'
       AutomaticFailoverEnabled: false
       NumCacheClusters: 1
-      AtRestEncryptionEnabled: true
       MultiAZEnabled: false
       CacheNodeType: !Ref RedisTshirtSize
       CacheParameterGroupName: !Ref RedisParameterGroup
