@@ -21,6 +21,7 @@ Parameters:
     Type: String
   DbPassword:
     Type: String
+    NoEcho: True
   DbName:
     Type: String
   DbMinCapacity:
