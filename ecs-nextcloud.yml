@@ -620,7 +620,7 @@ Resources:
           SecurityGroups:
           - !Ref EcsSecurityGroup
           Subnets: !Split [ ',', !If [PrivateSubnets, !GetAtt VpcStack.Outputs.PrivateSubnets, !GetAtt VpcStack.Outputs.PublicSubnets] ]
-      HealthCheckGracePeriodSeconds: 1200
+      HealthCheckGracePeriodSeconds: 2500
       LoadBalancers:
       - ContainerName: 'nextcloud'
         ContainerPort: '80'
