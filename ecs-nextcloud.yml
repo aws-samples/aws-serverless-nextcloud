@@ -115,7 +115,7 @@ Parameters:
   NextCloudVersion:
     Description: Nextcloud Version to be deployed (no downgrade possible)
     Type: String
-    Default: 21.0.1
+    Default: 23.0.1
   S3SecretRotationSerial:
     Description: In order to rotate long-term S3 credentials increase by 1
     Type: Number
